@@ -1,123 +1,104 @@
-import webview
+import tkinter as tk
+from tkinter import messagebox
 import threading
-import os
 import time
-from webview.errors import JavascriptException
 
 MIXERBOX_URL = 'https://www.mbplayer.com/list/10086761'
 
-HTML = """
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: -apple-system, 'Segoe UI', 'Noto Sans TC', sans-serif;
-  background: linear-gradient(145deg, #0f0f1a, #1a1a2e, #16213e);
-  height: 100vh; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; color: #fff;
-  overflow: hidden; user-select: none;
-}
-.logo {
-  font-size: 42px; font-weight: 800;
-  background: linear-gradient(135deg, #f7971e, #ffd200);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  margin-bottom: 4px;
-}
-.sub { font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 40px; letter-spacing: 6px; }
-.play-btn {
-  width: 160px; height: 160px; border-radius: 50%;
-  background: linear-gradient(145deg, #f7971e, #ffd200);
-  border: none; cursor: pointer; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 24px;
-  box-shadow: 0 0 40px rgba(247,151,30,0.3);
-  transition: all 0.3s ease;
-}
-.play-btn:hover { transform: scale(1.05); box-shadow: 0 0 60px rgba(247,151,30,0.5); }
-.play-btn:active { transform: scale(0.95); }
-.play-btn svg { width: 64px; height: 64px; fill: #1a1a2e; margin-left: 8px; }
-.label { font-size: 18px; font-weight: 600; color: rgba(255,255,255,0.9); margin-bottom: 2px; }
-.desc { font-size: 13px; color: rgba(255,255,255,0.35); }
-#status { margin-top: 28px; font-size: 13px; color: rgba(255,255,255,0.25); transition: 0.3s; }
-#status.loading { color: #ffd200; }
-</style>
-</head>
-<body>
-<div style="text-align:center;padding:40px;">
-<div class="logo">MixerBox</div>
-<div class="sub">一 鍵 播 放 器</div>
-<button class="play-btn" id="playBtn" onclick="onPlay()">
-<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
-</button>
-<div class="label">華語本週熱門排行</div>
-<div class="desc">隨機播放 · 50 首歌曲</div>
-<div id="status">點擊按鈕開始播放</div>
-</div>
-<script>
-function onPlay() {
-  var s = document.getElementById('status');
-  s.textContent = '正在啟動…';
-  s.className = 'loading';
-  document.getElementById('playBtn').style.pointerEvents = 'none';
-  if (window.pywebview && window.pywebview.api) {
-    window.pywebview.api.play();
-  }
-}
-</script>
-</body>
-</html>
-"""
+pw_window = None
+pw_ready = threading.Event()
 
-AUTO_CLICK_JS = """
-(function() {
-    function tryClick() {
-        var btns = document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-            if (btns[i].textContent.indexOf('隨機播放') !== -1) {
-                btns[i].click();
-                return true;
+def start_webview():
+    global pw_window
+    try:
+        import webview
+        from webview.errors import JavascriptException
+
+        AUTO_CLICK_JS = """
+        (function() {
+            function tryClick() {
+                var btns = document.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {
+                    if (btns[i].textContent.indexOf('隨機播放') !== -1) {
+                        btns[i].click();
+                        return true;
+                    }
+                }
+                return false;
             }
-        }
-        return false;
-    }
-    if (!tryClick()) {
-        var ob = new MutationObserver(function() {
-            if (tryClick()) { ob.disconnect(); }
-        });
-        ob.observe(document.body, { childList: true, subtree: true });
-        setTimeout(function() { ob.disconnect(); }, 15000);
-    }
-})();
-"""
+            if (!tryClick()) {
+                var ob = new MutationObserver(function() {
+                    if (tryClick()) { ob.disconnect(); }
+                });
+                ob.observe(document.body, { childList: true, subtree: true });
+                setTimeout(function() { ob.disconnect(); }, 15000);
+            }
+        })();
+        """
+        LOADING_HTML = '<html><body style="background:#0f0f1a;display:flex;align-items:center;justify-content:center;height:100vh;"><span style="color:#f7971e;font-family:sans-serif;font-size:20px;">載入中...</span></body></html>'
 
-class Api:
-    def play(self):
-        def _start():
-            time.sleep(0.3)
-            win = webview.windows[0]
-            win.load_url(MIXERBOX_URL)
-            time.sleep(4)
-            for _ in range(3):
+        pw_window = webview.create_window(
+            'MixerBox', html=LOADING_HTML,
+            width=1200, height=800, hidden=True,
+        )
+        pw_ready.set()
+        webview.start()
+
+        # --- navigate & auto-click after start ---
+        if pw_window:
+            pw_window.show()
+            pw_window.load_url(MIXERBOX_URL)
+            time.sleep(5)
+            for _ in range(4):
                 try:
-                    win.evaluate_js(AUTO_CLICK_JS)
+                    pw_window.evaluate_js(AUTO_CLICK_JS)
                 except JavascriptException:
                     pass
                 time.sleep(2)
-            win.minimize()
-        threading.Thread(target=_start, daemon=True).start()
+            pw_window.minimize()
+    except Exception as e:
+        pw_ready.set()
+        print('webview error:', e)
 
-window = webview.create_window(
-    'MixerBox 一鍵播放器',
-    html=HTML,
-    js_api=Api(),
-    width=400, height=520,
-    resizable=False,
-    text_select=False,
-)
+# --- start pywebview in background ---
+threading.Thread(target=start_webview, daemon=True).start()
 
-if __name__ == '__main__':
-    webview.start(debug=False)
+# --- tkinter splash (main thread, instant) ---
+root = tk.Tk()
+root.title('MixerBox 一鍵播放器')
+root.geometry('400x520+{}+{}'.format(
+    (root.winfo_screenwidth()-400)//2,
+    (root.winfo_screenheight()-520)//2
+))
+root.resizable(False, False)
+root.configure(bg='#1a1a2e')
+
+def on_play():
+    btn.config(state='disabled', text='...')
+    status.config(text='正在載入，請稍候…', fg='#ffd200')
+    root.update()
+    # wait for webview to be ready
+    pw_ready.wait(timeout=60)
+    root.iconify()
+
+tk.Label(root, text='MixerBox', font=('Segoe UI', 42, 'bold'),
+         fg='#f7971e', bg='#1a1a2e').pack(pady=(50,0))
+tk.Label(root, text='一 鍵 播 放 器', font=('Segoe UI', 11),
+         fg='#888', bg='#1a1a2e').pack(pady=(4,36))
+
+btn = tk.Button(root, text='▶', font=('Segoe UI', 40),
+    fg='#1a1a2e', bg='#f7971e', activeforeground='#1a1a2e',
+    activebackground='#ffd200', bd=0, cursor='hand2',
+    width=4, height=2, command=on_play)
+btn.pack(pady=16)
+
+tk.Label(root, text='華語本週熱門排行', font=('Segoe UI', 14, 'bold'),
+         fg='#eee', bg='#1a1a2e').pack(pady=(8,0))
+tk.Label(root, text='隨機播放 · 50 首歌曲', font=('Segoe UI', 10),
+         fg='#666', bg='#1a1a2e').pack(pady=(4,0))
+
+status = tk.Label(root, text='點擊按鈕開始播放', font=('Segoe UI', 10),
+                  fg='#555', bg='#1a1a2e')
+status.pack(pady=(20,0))
+
+root.mainloop()
