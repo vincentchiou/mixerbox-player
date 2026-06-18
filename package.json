@@ -1,0 +1,12 @@
+{
+  "name": "mixerbox-oneclick-player",
+  "version": "1.0.0",
+  "description": "一鍵播放 MixerBox 華語本週熱門隨機播放",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
