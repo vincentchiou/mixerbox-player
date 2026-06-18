@@ -5,7 +5,7 @@ MIXERBOX_URL = 'https://www.mbplayer.com/list/10086761'
 
 def play():
     webbrowser.open(MIXERBOX_URL)
-    root.destroy()
+    root.iconify()
 
 root = tk.Tk()
 root.title('MixerBox 一鍵播放器')
